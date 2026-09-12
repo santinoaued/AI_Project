@@ -1,11 +1,17 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+
 public class Boid : Agent
 {
-    [SerializeField] private float _health= 100;
+    [SerializeField] private float _health = 100;
     private bool _isActive = true;
+    public bool IsActive => _isActive;
+
+    [SerializeField] private float _respawnTime = 3f;
+    [SerializeField] private float _spawnRange = 20f;
 
     // raidus
     [SerializeField] private float _separationRadius;
@@ -198,5 +204,21 @@ public class Boid : Agent
 
         Move(steering);
         TryEat();
+    }
+
+    public void Collect()
+    {
+        StartCoroutine(CollectRoutine());
+    }
+
+    private IEnumerator CollectRoutine()
+    {
+        gameObject.SetActive(false);
+        yield return new WaitForSeconds(_respawnTime);
+
+        transform.position = new Vector3(UnityEngine.Random.Range(-_spawnRange, _spawnRange), transform.position.y, UnityEngine.Random.Range(-_spawnRange, _spawnRange));
+        _health = 100f;
+        _isActive = true;
+        gameObject.SetActive(true);
     }
 }
