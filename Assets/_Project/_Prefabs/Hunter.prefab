@@ -168,7 +168,9 @@ MonoBehaviour:
   _tba: 2
   _rangeAttackRadius: 5
   _meleeAttackRadius: 1.5
-  _attackDamage: 25
+  _meleeDamage: 50
+  _rangeDamage: 25
+  _bulletPrefab: {fileID: 6244871247064487113, guid: c355f4c77ab1af04d8d5f48ce62e1739, type: 3}
   _waypoints:
   - {fileID: 0}
   - {fileID: 0}
@@ -178,6 +180,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 256
   _perceptionRadius: 10
+  _baitPrefab: {fileID: 8412775510608512144, guid: fbe7d24017afa294097789b0f34eb6fc, type: 3}
 --- !u!135 &5687978324127413133
 SphereCollider:
   m_ObjectHideFlags: 0

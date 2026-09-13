@@ -1,45 +1,62 @@
 using UnityEngine;
-public class AttackState : IState
+
+public class AttackState : HunterState
 {
-    private Hunter _hunter;
     private Boid _target;
 
-    public AttackState(Hunter hunter, Boid target)
+    protected override string Name => "ATTACK";
+    protected override Color StateColor => new Color(1f, 0.25f, 0.25f);
+
+    public AttackState(Hunter hunter) : base(hunter) { }
+
+    public AttackState SetTarget(Boid target)
     {
-        _hunter = hunter;
         _target = target;
+        return this;
     }
 
-    public void Enter() { }
-
-    public void Update()
+    public override void Enter()
     {
-        if (_target == null)
+        base.Enter();
+        _hunter.CurrentTarget = _target;
+    }
+
+    public override void Update()
+    {
+        if (_target == null || !_target.IsActive)
         {
-            _hunter.ChangeState(new PatrolState(_hunter));
+            TransitionTo(_hunter.Patrol);
             return;
         }
 
-        float distance = Vector3.Distance(_hunter.transform.position, _target.transform.position);
+        float distance = _hunter.FlatDistance(_target.transform.position);
 
         if (distance > _hunter.PerceptionRadius)
         {
-            _hunter.ChangeState(new PatrolState(_hunter));
+            _hunter.SetAction($"{_target.name} escapo");
+            TransitionTo(_hunter.Patrol);
             return;
         }
 
-        if (distance <= _hunter.MeleeAttackRadius || distance <= _hunter.RangeAttackRadius)
+        if (distance <= _hunter.MeleeAttackRadius)
         {
-            _target.TakeDamage(_hunter.AttackDamage);
-            _hunter.ResetAttackTimer();
-            _hunter.ChangeState(new PatrolState(_hunter));
+            _hunter.MeleeAttack(_target);
+            FinishAttack();
+        }
+        else if (distance <= _hunter.RangeAttackRadius)
+        {
+            _hunter.RangeAttack(_target);
+            FinishAttack();
         }
         else
         {
-            Vector3 steering = _hunter.PursuitTarget(_target.transform.position, _target.Velocity);
-            _hunter.MoveHunter(steering);
+            _hunter.Move(_hunter.Pursuit(_target));
         }
     }
 
-    public void Exit() { }
+    private void FinishAttack()
+    {
+        _hunter.ResetAttackTimer();
+        TransitionTo(_hunter.Patrol);
+    }
 }

@@ -1,54 +1,89 @@
 using UnityEngine;
 
-public class PatrolState : IState
+public class PatrolState : HunterState
 {
-    private Hunter _hunter;
-    private int _currentWaypointIndex = 0;
-    private float _minDistance = 0.5f;
+    private int _currentWaypointIndex;
+    private float _baitSpawnTimer;
 
-    public PatrolState(Hunter hunter)
-    {
-        _hunter = hunter;
-    }
+    private bool _isPlacingBait;
+    private float _placingBaitTimer;
 
-    public void Enter()
-    {
-    }
+    protected override string Name => "PATROL";
+    protected override Color StateColor => new Color(0.3f, 0.5f, 1f);
 
-    public void Update()
+    public PatrolState(Hunter hunter) : base(hunter) { }
+
+    public override void Update()
     {
-        Boid inactiveBoid = _hunter.DetectInactiveBoid();
-        if (inactiveBoid != null)
+        if (_hunter.ClosestDeadBoid != null)
         {
-            _hunter.ChangeState(new GatherState(_hunter, inactiveBoid));
+            TransitionTo(_hunter.Gather.SetTarget(_hunter.ClosestDeadBoid));
             return;
         }
 
-        Boid target = _hunter.DetectTarget();
-        if (target != null && _hunter.CanAttack())
+        if (_hunter.CanAttack() && _hunter.ClosestAliveBoid != null)
         {
-            _hunter.ChangeState(new AttackState(_hunter, target));
+            TransitionTo(_hunter.Attack.SetTarget(_hunter.ClosestAliveBoid));
             return;
         }
 
-        Transform targetWaypoint = _hunter.Waypoints[_currentWaypointIndex];
-        Vector3 steering = _hunter.GoToWaypoint(targetWaypoint.position);
-        _hunter.MoveHunter(steering);
-
-        float distance = Vector3.Distance(_hunter.transform.position, targetWaypoint.position);
-
-        if (distance < _minDistance)
+        if (_isPlacingBait)
         {
-            _currentWaypointIndex++;
+            PlaceBait();
+            return;
+        }
 
-            if (_currentWaypointIndex >= _hunter.Waypoints.Length)
-            {
-                _currentWaypointIndex = 0;
-            }
+        FollowWaypoints();
+        UpdateBaitTimer();
+    }
+
+    public override void Exit()
+    {
+        base.Exit();
+        _isPlacingBait = false;
+    }
+
+    private void FollowWaypoints()
+    {
+        Transform[] waypoints = _hunter.Waypoints;
+        if (waypoints == null || waypoints.Length == 0)
+            return;
+
+        Transform targetWaypoint = waypoints[_currentWaypointIndex];
+
+        if (targetWaypoint != null)
+            _hunter.Move(_hunter.Arrive(targetWaypoint.position));
+
+        if (targetWaypoint == null || _hunter.FlatDistance(targetWaypoint.position) < _hunter.WaypointReachDistance)
+            _currentWaypointIndex = (_currentWaypointIndex + 1) % waypoints.Length;
+    }
+
+    private void UpdateBaitTimer()
+    {
+        _baitSpawnTimer += Time.deltaTime;
+
+        if (_baitSpawnTimer < _hunter.BaitSpawnInterval)
+            return;
+
+        _baitSpawnTimer = 0f;
+
+        if (_hunter.CanSpawnBait)
+        {
+            _isPlacingBait = true;
+            _placingBaitTimer = 0f;
+            _hunter.SetAction("colocando cebo");
         }
     }
 
-    public void Exit()
+    private void PlaceBait()
     {
+        _hunter.Move(_hunter.Brake());
+        _placingBaitTimer += Time.deltaTime;
+
+        if (_placingBaitTimer >= _hunter.PlacingBaitDuration)
+        {
+            _isPlacingBait = false;
+            _hunter.SpawnBait();
+        }
     }
 }

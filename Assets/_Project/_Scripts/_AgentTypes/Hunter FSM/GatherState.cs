@@ -1,48 +1,56 @@
 using UnityEngine;
 
-public class GatherState : IState
+public class GatherState : HunterState
 {
-    private Hunter _hunter;
     private Boid _target;
-    private float _gatherTime = 2f;
     private float _gatherTimer;
 
-    public GatherState(Hunter hunter, Boid target)
+    protected override string Name => "GATHER";
+    protected override Color StateColor => new Color(0.3f, 1f, 0.4f);
+
+    public GatherState(Hunter hunter) : base(hunter) { }
+
+    public GatherState SetTarget(Boid target)
     {
-        _hunter = hunter;
         _target = target;
+        return this;
     }
 
-    public void Enter()
+    public override void Enter()
     {
+        base.Enter();
         _gatherTimer = 0f;
+        _hunter.CurrentTarget = _target;
     }
 
-    public void Update()
+    public override void Update()
     {
-        if (_target == null || _target.IsActive)
+        if (_target == null || !_target.IsDead)
         {
-            _hunter.ChangeState(new PatrolState(_hunter));
+            _hunter.SetAction("recoleccion cancelada");
+            TransitionTo(_hunter.Patrol);
             return;
         }
 
-        float distance = Vector3.Distance(_hunter.transform.position, _target.transform.position);
+        Vector3 targetPosition = _target.transform.position;
+        float gatherDistance = _hunter.MeleeAttackRadius;
 
-        if (distance > _hunter.MeleeAttackRadius)
+        _hunter.Move(_hunter.Arrive(targetPosition, gatherDistance * 0.7f));
+
+        if (_hunter.FlatDistance(targetPosition) > gatherDistance)
         {
-            Vector3 steering = _hunter.GoToWaypoint(_target.transform.position);
-            _hunter.MoveHunter(steering);
+            _gatherTimer = 0f;
             return;
         }
 
         _gatherTimer += Time.deltaTime;
+        _hunter.SetAction($"Recolectando {_target.name}");
 
-        if (_gatherTimer >= _gatherTime)
+        if (_gatherTimer >= _hunter.GatherDuration)
         {
             _target.Collect();
-            _hunter.ChangeState(new PatrolState(_hunter));
+            _hunter.SetAction($"{_target.name} recolectado");
+            TransitionTo(_hunter.Patrol);
         }
     }
-
-    public void Exit() { }
 }

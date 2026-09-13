@@ -2,73 +2,96 @@ using UnityEngine;
 
 public class Agent : MonoBehaviour
 {
-    [SerializeField] protected float _maxSpeed;
-    [SerializeField] protected float _maxSteering;
-    [SerializeField] protected float _slowingDistance;
-    [SerializeField] protected float _minDistance;
+    [SerializeField] protected float _maxSpeed = 4f;
+    [SerializeField] protected float _maxSteering = 2f;
+    [SerializeField] protected float _slowingDistance = 3f;
+    [SerializeField] protected float _minDistance = 0.5f;
 
     protected Vector3 _currentVelocity;
     public Vector3 Velocity => _currentVelocity;
 
-    protected Vector3 DesiredVector(Vector3 target)
+    protected virtual bool WrapsAroundBounds => true;
+
+    protected static Vector3 Flat(Vector3 vector)
     {
-        return (target - transform.position).normalized * _maxSpeed;
+        vector.y = 0f;
+        return vector;
+    }
+
+    public float FlatDistance(Vector3 target)
+    {
+        return Flat(target - transform.position).magnitude;
+    }
+
+    protected Vector3 DesiredVector(Vector3 target, float speed)
+    {
+        return Flat(target - transform.position).normalized * speed;
     }
 
     protected Vector3 CalculateSteering(Vector3 desired)
     {
-        Vector3 steering = desired - _currentVelocity;
-        steering = Vector3.ClampMagnitude(steering, _maxSteering * Time.deltaTime);
-        return steering;
+        Vector3 steering = Flat(desired) - _currentVelocity;
+        return Vector3.ClampMagnitude(steering, _maxSteering * Time.deltaTime);
     }
 
-    protected Vector3 Seek(Vector3 target)
+
+    public Vector3 Seek(Vector3 target)
     {
-        Vector3 desired = DesiredVector(target);
-        return CalculateSteering(desired);
+        return CalculateSteering(DesiredVector(target, _maxSpeed));
     }
 
-    protected Vector3 Flee(Vector3 target)
+    public Vector3 Flee(Vector3 target)
     {
-        Vector3 desired = -DesiredVector(target);
-        return CalculateSteering(desired);
+        return CalculateSteering(-DesiredVector(target, _maxSpeed));
     }
 
-    protected Vector3 Arrive(Vector3 target)
+    public Vector3 Arrive(Vector3 target, float stopDistance = 0f)
     {
-        Vector3 direction = target - transform.position;
-        float distance = direction.magnitude;
+        float distance = FlatDistance(target) - stopDistance;
 
-        if (distance < _minDistance)
-            return -_currentVelocity;
+        if (distance <= _minDistance)
+            return Brake();
 
-        float targetSpeed = _maxSpeed * (distance / _slowingDistance);
-        float desiredSpeed = Mathf.Min(targetSpeed, _maxSpeed);
-
-        Vector3 desired = direction.normalized * desiredSpeed;
-        return CalculateSteering(desired);
+        float desiredSpeed = Mathf.Min(_maxSpeed, _maxSpeed * (distance / _slowingDistance));
+        return CalculateSteering(DesiredVector(target, desiredSpeed));
     }
 
-    protected Vector3 Pursuit(Vector3 targetPosition, Vector3 targetVelocity)
+    public Vector3 Pursuit(Agent target)
     {
-        float distance = (targetPosition - transform.position).magnitude;
-        float predictionTime = distance / _maxSpeed;
-        Vector3 futurePosition = targetPosition + targetVelocity * predictionTime;
-        return Seek(futurePosition);
+        return Seek(PredictPosition(target));
     }
 
-    protected Vector3 Evade(Vector3 targetPosition, Vector3 targetVelocity)
+    public Vector3 Evade(Agent target)
     {
-        float distance = (targetPosition - transform.position).magnitude;
-        float predictionTime = distance / _maxSpeed;
-        Vector3 futurePosition = targetPosition + targetVelocity * predictionTime;
-        return Flee(futurePosition);
+        return Flee(PredictPosition(target));
     }
 
-    protected void Move(Vector3 steering)
+    public Vector3 Brake()
     {
-        _currentVelocity += steering;
+        return CalculateSteering(Vector3.zero);
+    }
+
+    private Vector3 PredictPosition(Agent target)
+    {
+        Vector3 targetPosition = target.transform.position;
+        float predictionTime = FlatDistance(targetPosition) / _maxSpeed;
+        return targetPosition + target.Velocity * predictionTime;
+    }
+
+    public void Move(Vector3 steering)
+    {
+        _currentVelocity = Vector3.ClampMagnitude(Flat(_currentVelocity + steering), _maxSpeed);
         transform.position += _currentVelocity * Time.deltaTime;
-        transform.position = Bounds.Instance.OutOfBounds(transform.position);
+
+        if (WrapsAroundBounds && Bounds.Instance != null)
+            transform.position = Bounds.Instance.OutOfBounds(transform.position);
+
+        if (_currentVelocity.sqrMagnitude > 0.01f)
+            transform.rotation = Quaternion.LookRotation(_currentVelocity);
+    }
+
+    protected void Stop()
+    {
+        _currentVelocity = Vector3.zero;
     }
 }

@@ -1,224 +1,330 @@
-using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-
 public class Boid : Agent
 {
-    [SerializeField] private float _health = 100;
-    private bool _isActive = true;
-    public bool IsActive => _isActive;
+    private enum BoidState { Flocking, Evading, GoingToBait, Dead }
 
+    [SerializeField] private float _maxHealth = 100f;
     [SerializeField] private float _respawnTime = 3f;
-    [SerializeField] private float _spawnRange = 20f;
 
-    // raidus
-    [SerializeField] private float _separationRadius;
-    [SerializeField] private float _neighborRadius;
-    [SerializeField] private float _visionRadius;
+    [Header("radius")]
+    [SerializeField] private float _separationRadius = 2f;
+    [SerializeField] private float _neighborRadius = 5f;
+    [SerializeField] private float _visionRadius = 8f;
 
-    // layers
+    [Header("layers")]
     [SerializeField] private LayerMask _boidLayer;
     [SerializeField] private LayerMask _hunterLayer;
     [SerializeField] private LayerMask _baitLayer;
 
-    // weight
+    [Header("weights")]
     [SerializeField] private float _separationWeight = 2f;
     [SerializeField] private float _alignmentWeight = 1f;
     [SerializeField] private float _cohesionWeight = 1f;
+    [SerializeField] private float _evadeWeight = 3f;
+    [SerializeField] private float _arriveWeight = 1.5f;
 
-    // hunter
-    private Hunter _detectedHunter;
-
-    // bait
-    private Bait _detectedBait;
+    [Header("bait")]
+    [SerializeField] private float _eatDistance = 1.2f;
     [SerializeField] private float _eatInterval = 1f;
-    private float _eatTimer;
     [SerializeField] private float _damage = 25f;
 
+    [Header("feedback")]
+    [SerializeField] private Color _evadeColor = new Color(1f, 0.3f, 0.3f);
+    [SerializeField] private Color _baitColor = new Color(1f, 0.85f, 0.2f);
+    [SerializeField] private Color _deadColor = new Color(0.25f, 0.25f, 0.25f);
 
-    private List<Boid> GetNeighbors(float radius)
+    private static readonly Collider[] _sensorBuffer = new Collider[64];
+
+    private readonly List<Boid> _neighbors = new List<Boid>();
+    private Hunter _detectedHunter;
+    private Bait _detectedBait;
+    private int _sensorMask;
+
+    private float _health;
+    private float _eatTimer;
+    private bool _isActive = true;
+    private bool _isCollected;
+    private BoidState _state = BoidState.Flocking;
+
+    private Renderer[] _renderers;
+    private Collider[] _colliders;
+    private Material _material;
+    private Color _baseColor = Color.white;
+    private WaitForSeconds _respawnWait;
+
+    public bool IsActive => _isActive && !_isCollected;
+    public bool IsDead => !_isActive && !_isCollected;
+    public bool IsCollected => _isCollected;
+
+    private void Awake()
     {
-        Collider[] colliders = Physics.OverlapSphere(transform.position, radius, _boidLayer);
-        List<Boid> neighbors = new List<Boid>();
+        _renderers = GetComponentsInChildren<Renderer>();
+        _colliders = GetComponentsInChildren<Collider>();
+        _sensorMask = _boidLayer | _hunterLayer | _baitLayer;
+        _respawnWait = new WaitForSeconds(_respawnTime);
 
-        foreach (Collider collider in colliders)
+        if (_renderers.Length > 0)
         {
-            Boid boid = collider.GetComponent<Boid>();
-
-            if (boid != null && boid.gameObject != gameObject)
-                neighbors.Add(boid);
-        }
-
-        return neighbors;
-    }
-
-    private Vector3 Separation() 
-    {
-        List<Boid> neighbors = GetNeighbors(_separationRadius);
-        Vector3 separationForce = Vector3.zero;
-
-        foreach (Boid neighbor in neighbors)
-        {
-            separationForce += transform.position - neighbor.transform.position;
-        }
-
-        if (neighbors.Count > 0) 
-        {
-            separationForce /= neighbors.Count;
-        }
-
-        return CalculateSteering(separationForce);
-    }
-
-    private Vector3 Alignment() 
-    {
-        List<Boid> neighbors = GetNeighbors(_neighborRadius);
-        Vector3 alignmentForce = Vector3.zero;
-
-        foreach (Boid neighbor in neighbors) 
-        {
-            alignmentForce += neighbor.Velocity;
-        }
-
-        if (neighbors.Count > 0)
-        {
-            alignmentForce /= neighbors.Count;
-        }
-
-        return CalculateSteering(alignmentForce);
-    }
-
-    private Vector3 Cohesion()
-    {
-        List<Boid> neighbors = GetNeighbors(_neighborRadius);
-        Vector3 cohesionForce = Vector3.zero;
-
-        foreach (Boid neighbor in neighbors)
-        {
-            cohesionForce += neighbor.transform.position;
-        }
-
-        if (neighbors.Count > 0)
-        {
-            cohesionForce /= neighbors.Count;
-        }
-
-        cohesionForce -= transform.position;
-
-        return CalculateSteering(cohesionForce);
-    }
-
-    private Vector3 CalculateFlocking()
-    {
-        return (Separation() * _separationWeight) + (Alignment() * _alignmentWeight) + (Cohesion() * _cohesionWeight);
-    }
-
-    // DetectHunter no reusa GetNeighbors por claridad; se podría unificar si la prioridad fuera rendimiento
-    private Hunter DetectHunter() 
-    {
-        Collider[] colliders = Physics.OverlapSphere(transform.position, _visionRadius, _hunterLayer);
-
-        foreach (Collider collider in colliders)
-        {
-            Hunter hunter = collider.GetComponent<Hunter>();
-            if (hunter != null)
-            {
-                return hunter;
-            }
-        }
-
-            return null;
-    }
-
-    private Bait DetectBait() 
-    {
-        Collider[] colliders = Physics.OverlapSphere(transform.position, _visionRadius, _baitLayer);
-
-        foreach (Collider collider in colliders)
-        {
-            Bait bait = collider.GetComponent<Bait>();
-            if (bait != null)
-            {
-                return bait;
-            }
-        }
-
-        return null;
-    }
-
-    private void TryEat()
-    {
-        if (_detectedBait == null)
-            return;
-
-        Vector3 direction = _detectedBait.transform.position - transform.position;
-        float distance = direction.magnitude;
-
-        if (distance < _minDistance)
-        {
-            _eatTimer += Time.deltaTime;
-
-            if (_eatTimer >= _eatInterval)
-            {
-                _detectedBait.TakeDamage(_damage);
-                _eatTimer = 0f;
-            }
+            _material = _renderers[0].material;
+            _baseColor = _material.color;
         }
     }
 
-    public void TakeDamage(float damage) 
+    private void Start()
     {
-        _health -= damage;
-        if (_health <= 0f) 
-        {
-            _isActive = false;
-        }
+        _health = _maxHealth;
+        RandomizeVelocity();
     }
 
     private void Update()
     {
-        if (!_isActive)
-        {
+        if (!IsActive)
             return;
-        }
 
-        Vector3 steering;
+        Sense();
 
-        _detectedHunter = DetectHunter();
-        _detectedBait = DetectBait();
+        Vector3 steering = Separation() * _separationWeight;
 
         if (_detectedHunter != null)
         {
-            steering = Evade(_detectedHunter.transform.position, _detectedHunter.Velocity);
+            steering += Evade(_detectedHunter) * _evadeWeight;
+            SetState(BoidState.Evading);
         }
         else if (_detectedBait != null)
         {
-            steering = Arrive(_detectedBait.transform.position);
+            steering += Arrive(_detectedBait.transform.position, _eatDistance) * _arriveWeight;
+            SetState(BoidState.GoingToBait);
+            TryEat();
         }
         else
         {
-            steering = CalculateFlocking();
+            steering += Alignment() * _alignmentWeight
+                      + Cohesion() * _cohesionWeight
+                      + Cruise();
+            SetState(BoidState.Flocking);
         }
 
         Move(steering);
-        TryEat();
+    }
+
+    private void Sense()
+    {
+        _neighbors.Clear();
+        _detectedHunter = null;
+
+        Bait closestBait = null;
+        float closestBaitDistance = float.MaxValue;
+
+        float radius = Mathf.Max(_neighborRadius, _visionRadius);
+        int count = Physics.OverlapSphereNonAlloc(transform.position, radius, _sensorBuffer, _sensorMask, QueryTriggerInteraction.Collide);
+
+        for (int i = 0; i < count; i++)
+        {
+            Collider sensed = _sensorBuffer[i];
+            float distance = FlatDistance(sensed.transform.position);
+
+            if (sensed.TryGetComponent(out Boid boid))
+            {
+                if (boid != this && !boid.IsCollected && distance <= _neighborRadius)
+                    _neighbors.Add(boid);
+            }
+            else if (distance > _visionRadius)
+            {
+                continue;
+            }
+            else if (_detectedHunter == null && sensed.TryGetComponent(out Hunter hunter))
+            {
+                _detectedHunter = hunter;
+            }
+            else if (distance < closestBaitDistance && sensed.TryGetComponent(out Bait bait))
+            {
+                closestBaitDistance = distance;
+                closestBait = bait;
+            }
+        }
+
+        if (closestBait != _detectedBait)
+            _eatTimer = 0f;
+
+        _detectedBait = closestBait;
+    }
+
+    private Vector3 Separation()
+    {
+        Vector3 away = Vector3.zero;
+
+        foreach (Boid neighbor in _neighbors)
+        {
+            Vector3 offset = Flat(transform.position - neighbor.transform.position);
+            float sqrDistance = offset.sqrMagnitude;
+
+            if (sqrDistance > _separationRadius * _separationRadius)
+                continue;
+
+            away += offset / Mathf.Max(sqrDistance, 0.0001f);
+        }
+
+        return away == Vector3.zero ? Vector3.zero : Seek(transform.position + away);
+    }
+
+    private Vector3 Alignment()
+    {
+        Vector3 velocitySum = Vector3.zero;
+
+        foreach (Boid neighbor in _neighbors)
+        {
+            if (neighbor.IsActive)
+                velocitySum += neighbor.Velocity;
+        }
+
+        return velocitySum.sqrMagnitude < 0.0001f ? Vector3.zero : Seek(transform.position + velocitySum);
+    }
+
+    private Vector3 Cohesion()
+    {
+        Vector3 center = Vector3.zero;
+        int count = 0;
+
+        foreach (Boid neighbor in _neighbors)
+        {
+            if (!neighbor.IsActive)
+                continue;
+
+            center += neighbor.transform.position;
+            count++;
+        }
+
+        return count == 0 ? Vector3.zero : Seek(center / count);
+    }
+
+    private Vector3 Cruise()
+    {
+        if (_currentVelocity.sqrMagnitude < 0.0001f)
+            RandomizeVelocity();
+
+        return Seek(transform.position + _currentVelocity);
+    }
+
+    private void RandomizeVelocity()
+    {
+        Vector2 random = Random.insideUnitCircle.normalized;
+        _currentVelocity = new Vector3(random.x, 0f, random.y) * _maxSpeed;
+    }
+
+    private void TryEat()
+    {
+        if (FlatDistance(_detectedBait.transform.position) > _eatDistance + 0.5f)
+        {
+            _eatTimer = 0f;
+            return;
+        }
+
+        _eatTimer += Time.deltaTime;
+
+        if (_eatTimer >= _eatInterval)
+        {
+            _detectedBait.TakeDamage(_damage);
+            _eatTimer = 0f;
+        }
+    }
+
+    public void TakeDamage(float damage)
+    {
+        if (!IsActive)
+            return;
+
+        _health -= damage;
+
+        if (_health <= 0f)
+        {
+            _health = 0f;
+            _isActive = false;
+            _detectedBait = null;
+            Stop();
+            SetState(BoidState.Dead);
+            Debug.Log($"{name}: eliminado");
+        }
     }
 
     public void Collect()
     {
-        StartCoroutine(CollectRoutine());
+        if (IsDead)
+            StartCoroutine(CollectRoutine());
     }
 
     private IEnumerator CollectRoutine()
     {
-        gameObject.SetActive(false);
-        yield return new WaitForSeconds(_respawnTime);
+        _isCollected = true;
+        SetVisible(false);
 
-        transform.position = new Vector3(UnityEngine.Random.Range(-_spawnRange, _spawnRange), transform.position.y, UnityEngine.Random.Range(-_spawnRange, _spawnRange));
-        _health = 100f;
+        yield return _respawnWait;
+
+        Vector3 randomPoint = Bounds.Instance.RandomPoint();
+        transform.position = new Vector3(randomPoint.x, transform.position.y, randomPoint.z);
+        _health = _maxHealth;
+        _eatTimer = 0f;
+        RandomizeVelocity();
+        SetState(BoidState.Flocking);
+
         _isActive = true;
-        gameObject.SetActive(true);
+        _isCollected = false;
+        SetVisible(true);
+    }
+
+    private void SetState(BoidState state)
+    {
+        if (_state == state || _material == null)
+        {
+            _state = state;
+            return;
+        }
+
+        _state = state;
+        _material.color = state switch
+        {
+            BoidState.Evading => _evadeColor,
+            BoidState.GoingToBait => _baitColor,
+            BoidState.Dead => _deadColor,
+            _ => _baseColor
+        };
+    }
+
+    private void SetVisible(bool visible)
+    {
+        foreach (Renderer renderer in _renderers)
+            renderer.enabled = visible;
+
+        foreach (Collider collider in _colliders)
+            collider.enabled = visible;
+    }
+
+    private void OnDrawGizmos()
+    {
+        if (!Application.isPlaying || !IsActive)
+            return;
+
+        if (_detectedHunter != null)
+        {
+            Gizmos.color = Color.red;
+            Gizmos.DrawLine(transform.position, _detectedHunter.transform.position);
+        }
+        else if (_detectedBait != null)
+        {
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawLine(transform.position, _detectedBait.transform.position);
+        }
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, _separationRadius);
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawWireSphere(transform.position, _neighborRadius);
+        Gizmos.color = Color.white;
+        Gizmos.DrawWireSphere(transform.position, _visionRadius);
     }
 }

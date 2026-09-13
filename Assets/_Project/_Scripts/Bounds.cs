@@ -24,6 +24,13 @@ public class Bounds : MonoBehaviour
         return newPosition;
     }
 
+    public Vector3 RandomPoint()
+    {
+        float x = Random.Range(-width / 2f, width / 2f);
+        float z = Random.Range(-height / 2f, height / 2f);
+        return new Vector3(x, 0f, z);
+    }
+
     private void OnDrawGizmos()
     {
         if (!drawGizmos) return;
