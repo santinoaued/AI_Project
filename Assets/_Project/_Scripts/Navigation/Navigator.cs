@@ -15,6 +15,7 @@ public class Navigator
     private bool _hasPath;
     private int _index;
     private int _lastMoveFrame;
+    private bool _stopAtTarget;
 
     public event Action<Vector3, bool> PathComputed;
 
@@ -31,8 +32,10 @@ public class Navigator
         _repathDistance = repathDistance;
     }
 
-    public void MoveTo(Vector3 target)
+    public void MoveTo(Vector3 target, bool stopAtTarget = true)
     {
+        _stopAtTarget = stopAtTarget;
+
         if (Time.frameCount - _lastMoveFrame > 1)
             _hasGoal = false;
 
@@ -42,7 +45,7 @@ public class Navigator
         {
             _hasGoal = false;
             _hasPath = false;
-            _agent.Move(_agent.Arrive(target));
+            _agent.Move(_stopAtTarget ? _agent.Arrive(target) : _agent.Seek(target));
             return;
         }
 
@@ -79,6 +82,6 @@ public class Navigator
             _index++;
 
         Vector3 point = _path[_index];
-        _agent.Move(_index == last ? _agent.Arrive(point) : _agent.Seek(point));
+        _agent.Move(_index == last && _stopAtTarget ? _agent.Arrive(point) : _agent.Seek(point));
     }
 }

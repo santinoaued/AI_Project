@@ -84,8 +84,7 @@ public class WolfIndicators : MonoBehaviour
         Color color = _wolf.CanSeeHunter ? new Color(1f, 0.2f, 0.2f, 0.6f) : new Color(1f, 1f, 1f, 0.35f);
 
         _coneLine.enabled = true;
-        _coneLine.startColor = color;
-        _coneLine.endColor = color;
+        SetColor(_coneLine, color);
         _coneLine.SetPosition(0, Raised(origin));
 
         float halfAngle = _wolf.ViewAngle * 0.5f;
@@ -153,8 +152,7 @@ public class WolfIndicators : MonoBehaviour
 
         Color color = _ringColor;
         color.a = 1f - t;
-        _ringLine.startColor = color;
-        _ringLine.endColor = color;
+        SetColor(_ringLine, color);
 
         float radius = Mathf.Lerp(0.5f, _ringMaxRadius, t);
         Vector3 center = Raised(transform.position);
@@ -175,8 +173,7 @@ public class WolfIndicators : MonoBehaviour
             return;
 
         Color color = new Color(1f, 0.55f, 0.1f, 1f - t);
-        _alertLine.startColor = color;
-        _alertLine.endColor = color;
+        SetColor(_alertLine, color);
         _alertLine.SetPosition(0, Raised(_alertSource));
         _alertLine.SetPosition(1, Raised(transform.position));
     }
@@ -192,8 +189,7 @@ public class WolfIndicators : MonoBehaviour
         line.loop = loop;
         line.startWidth = width;
         line.endWidth = width;
-        line.startColor = color;
-        line.endColor = color;
+        SetColor(line, color);
         line.enabled = false;
         return line;
     }
@@ -210,6 +206,12 @@ public class WolfIndicators : MonoBehaviour
 
         marker.SetActive(false);
         return marker.transform;
+    }
+
+    private static void SetColor(LineRenderer line, Color color)
+    {
+        line.startColor = color;
+        line.endColor = color;
     }
 
     private static Vector3 Raised(Vector3 position)

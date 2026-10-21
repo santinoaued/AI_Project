@@ -37,6 +37,12 @@ public class Bullet : Agent
             return;
         }
 
+        if (_currentVelocity.sqrMagnitude > 0.0001f && IsObstructed(_currentVelocity.normalized, _currentVelocity.magnitude * Time.deltaTime))
+        {
+            Release();
+            return;
+        }
+
         Move(Pursuit(_target));
 
         if (FlatDistance(_target.transform.position) <= _hitDistance)

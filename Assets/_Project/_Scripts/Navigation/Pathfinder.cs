@@ -82,8 +82,12 @@ public class Pathfinder
             if (current == goal)
                 break;
 
-            foreach (GraphNode neighbor in current.Neighbors)
+            IReadOnlyList<GraphNode> neighbors = current.Neighbors;
+
+            for (int i = 0; i < neighbors.Count; i++)
             {
+                GraphNode neighbor = neighbors[i];
+
                 if (IsEdgeBlocked(current, neighbor))
                     continue;
 

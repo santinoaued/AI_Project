@@ -33,7 +33,6 @@ public class Wolf : Agent
 
     private Hunter _hunter;
     private Perception _perception;
-    private Navigator _navigator;
     private StateFeedback _feedback;
     private WolfIndicators _indicators;
     private bool _hasPendingAlert;
@@ -46,7 +45,7 @@ public class Wolf : Agent
     public SearchState Search { get; private set; }
 
     public WaypointPath Path { get; private set; }
-    public Navigator Navigator => _navigator;
+    public Navigator Navigator { get; private set; }
     public float ArriveDistance => _arriveDistance;
     public float SearchDuration => _searchDuration;
     public float LoseSightDelay => _loseSightDelay;
@@ -90,21 +89,22 @@ public class Wolf : Agent
         if (_hunter == null)
             Debug.LogError("wolf: no hay Hunter en la escena", this);
 
-        if (NavigationGraph.Instance == null)
+        Navigator = CreateNavigator(_nodeReachDistance, _repathDistance);
+
+        if (Navigator == null)
         {
             Debug.LogError("wolf: no hay NavigationGraph en la escena", this);
             return;
         }
 
-        _navigator = new Navigator(this, NavigationGraph.Instance.Pathfinder, _nodeReachDistance, _repathDistance);
-        _navigator.PathComputed += OnPathComputed;
+        Navigator.PathComputed += OnPathComputed;
 
         StateMachine.ChangeState(Patrol);
     }
 
     private void Update()
     {
-        if (_navigator == null)
+        if (Navigator == null)
             return;
 
         CanSeeHunter = _hunter != null && _hunter.IsAlive && _perception.CanSee(_hunter.transform);
@@ -115,17 +115,9 @@ public class Wolf : Agent
         StateMachine.Update();
     }
 
-    public void MoveTo(Vector3 target) => _navigator.MoveTo(target);
+    public void MoveTo(Vector3 target) => Navigator.MoveTo(target);
 
-    public void FollowPatrol()
-    {
-        Transform waypoint = Path.Current;
-
-        if (waypoint != null)
-            _navigator.MoveTo(waypoint.position);
-
-        Path.AdvanceIfReached(this);
-    }
+    public void FollowPatrol() => Path.Follow(this, Navigator);
 
     public void PursueHunter() => Move(Pursuit(_hunter));
 

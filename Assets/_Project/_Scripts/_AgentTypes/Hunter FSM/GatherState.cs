@@ -41,7 +41,10 @@ public class GatherState : HunterState
         Vector3 targetPosition = _target.transform.position;
         float gatherDistance = _hunter.MeleeAttackRadius;
 
-        _hunter.Move(_hunter.Arrive(targetPosition, gatherDistance * 0.7f));
+        if (_hunter.FlatDistance(targetPosition) > gatherDistance && _hunter.Navigator != null)
+            _hunter.Navigator.MoveTo(targetPosition);
+        else
+            _hunter.Move(_hunter.Arrive(targetPosition, gatherDistance * 0.7f));
 
         if (_hunter.FlatDistance(targetPosition) > gatherDistance)
         {

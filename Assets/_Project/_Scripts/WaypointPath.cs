@@ -14,11 +14,13 @@ public class WaypointPath
         _reachDistance = reachDistance;
     }
 
-    public void Follow(Agent agent)
+    public void Follow(Agent agent, Navigator navigator)
     {
         Transform target = Current;
 
-        if (target != null)
+        if (target != null && navigator != null)
+            navigator.MoveTo(target.position, false);
+        else if (target != null)
             agent.Move(agent.Arrive(target.position));
 
         AdvanceIfReached(agent);

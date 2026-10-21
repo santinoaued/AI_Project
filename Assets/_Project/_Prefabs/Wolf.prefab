@@ -153,12 +153,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7d28a6e6f34e2234ea6dc14136373b74, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Wolf
-  _maxSpeed: 5
+  _maxSpeed: 4.5
   _maxSteering: 3
   _slowingDistance: 4
   _minDistance: 0.1
+  _bodyRadius: 0.4
   _waypoints:
   - {fileID: 0}
   - {fileID: 0}
@@ -173,6 +174,7 @@ MonoBehaviour:
   _arriveDistance: 1.5
   _searchDuration: 6
   _searchRadius: 8
+  _loseSightDelay: 0.75
   _biteDamage: 25
   _biteRadius: 1.5
   _biteCooldown: 1.5

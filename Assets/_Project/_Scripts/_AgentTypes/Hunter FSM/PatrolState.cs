@@ -42,7 +42,7 @@ public class PatrolState : HunterState
             return;
         }
 
-        _path.Follow(_hunter);
+        _path.Follow(_hunter, _hunter.Navigator);
         UpdateBaitTimer();
     }
 

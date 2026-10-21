@@ -44,9 +44,15 @@ public class Agent : MonoBehaviour
 
     public bool HasLineOfSight(Vector3 target)
     {
-        Vector3 origin = new Vector3(transform.position.x, ObstacleCastHeight, transform.position.z);
         Vector3 end = new Vector3(target.x, ObstacleCastHeight, target.z);
-        return !Physics.Linecast(origin, end, ObstacleMask);
+        return !Physics.Linecast(CastOrigin(), end, ObstacleMask);
+    }
+
+    protected Navigator CreateNavigator(float nodeReachDistance, float repathDistance)
+    {
+        return NavigationGraph.Instance != null
+            ? new Navigator(this, NavigationGraph.Instance.Pathfinder, nodeReachDistance, repathDistance)
+            : null;
     }
 
     public bool IsObstructed(Vector3 direction, float distance)

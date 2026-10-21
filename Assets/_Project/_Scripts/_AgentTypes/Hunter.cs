@@ -15,6 +15,10 @@ public class Hunter : Agent
     [SerializeField] private Transform[] _waypoints;
     [SerializeField] private float _waypointReachDistance = 1f;
 
+    [Header("navigation")]
+    [SerializeField] private float _nodeReachDistance = 1.5f;
+    [SerializeField] private float _repathDistance = 2f;
+
     [Header("perception")]
     [SerializeField] private LayerMask _boidLayer;
     [SerializeField] private float _perceptionRadius = 12f;
@@ -67,6 +71,7 @@ public class Hunter : Agent
     public bool IsAlive => Health > 0f;
     public float RespawnDelay => _respawnDelay;
     public Wolf ClosestWolf { get; private set; }
+    public Navigator Navigator { get; private set; }
 
     public Transform[] Waypoints => _waypoints;
     public float WaypointReachDistance => _waypointReachDistance;
@@ -113,6 +118,8 @@ public class Hunter : Agent
 
     private void Start()
     {
+        Navigator = CreateNavigator(_nodeReachDistance, _repathDistance);
+
         StateMachine.ChangeState(Patrol);
     }
 
