@@ -181,6 +181,9 @@ MonoBehaviour:
     m_Bits: 256
   _perceptionRadius: 10
   _baitPrefab: {fileID: 8412775510608512144, guid: fbe7d24017afa294097789b0f34eb6fc, type: 3}
+  _wolfLayer:
+    serializedVersion: 2
+    m_Bits: 512
 --- !u!135 &5687978324127413133
 SphereCollider:
   m_ObjectHideFlags: 0

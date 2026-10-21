@@ -25,6 +25,12 @@ public class GatherState : HunterState
 
     public override void Update()
     {
+        if (_hunter.ClosestWolf != null)
+        {
+            TransitionTo(_hunter.Escape);
+            return;
+        }
+
         if (_target == null || !_target.IsDead)
         {
             _hunter.SetAction("recoleccion cancelada");

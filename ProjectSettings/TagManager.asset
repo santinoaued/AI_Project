@@ -14,8 +14,8 @@ TagManager:
   - _hunterLayer
   - _baitLayer
   - _boidLayer
-  - 
-  - 
+  - _wolfLayer
+  - _obstacleLayer
   - 
   - 
   - 

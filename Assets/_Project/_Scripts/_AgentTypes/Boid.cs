@@ -131,7 +131,7 @@ public class Boid : Agent
                 if (boid != this && !boid.IsCollected && distance <= _neighborRadius)
                     _neighbors.Add(boid);
             }
-            else if (distance > _visionRadius)
+            else if (distance > _visionRadius || !HasLineOfSight(sensed.transform.position))
             {
                 continue;
             }

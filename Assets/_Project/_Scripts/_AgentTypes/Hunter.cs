@@ -28,6 +28,18 @@ public class Hunter : Agent
     [Header("gather")]
     [SerializeField] private float _gatherDuration = 2f;
 
+    [Header("health")]
+    [SerializeField] private float _maxHealth = 100f;
+    [SerializeField] private float _respawnDelay = 3f;
+
+    [Header("escape")]
+    [SerializeField] private LayerMask _wolfLayer;
+    [SerializeField] private float _escapeRadius = 10f;
+    [SerializeField] private float _escapeExitMargin = 3f;
+    [SerializeField] private float _escapeLookAhead = 3f;
+    [SerializeField] private float _escapeSpeedMultiplier = 1.4f;
+    [SerializeField] private float _escapeSteeringMultiplier = 4f;
+
     [Header("feedback")]
     [SerializeField] private bool _showDebugPanel = true;
 
@@ -35,14 +47,26 @@ public class Hunter : Agent
 
     private ObjectPool<Bullet> _bulletPool;
     private float _nextAttackTime;
-    private Material _bodyMaterial;
-    private TextMesh _stateLabel;
-    private Transform _cameraTransform;
+    private StateFeedback _feedback;
+    private Renderer[] _renderers;
+    private Collider[] _colliders;
+    private Vector3 _spawnPosition;
+    private float _baseMaxSpeed;
+    private float _baseMaxSteering;
+
+    private static readonly float[] EscapeAngles = { 0f, 45f, -45f, 90f, -90f, 135f, -135f };
 
     public StateMachine StateMachine { get; } = new StateMachine();
     public PatrolState Patrol { get; private set; }
     public AttackState Attack { get; private set; }
     public GatherState Gather { get; private set; }
+    public EscapeState Escape { get; private set; }
+    public DeadState Dead { get; private set; }
+
+    public float Health { get; private set; }
+    public bool IsAlive => Health > 0f;
+    public float RespawnDelay => _respawnDelay;
+    public Wolf ClosestWolf { get; private set; }
 
     public Transform[] Waypoints => _waypoints;
     public float WaypointReachDistance => _waypointReachDistance;
@@ -64,9 +88,14 @@ public class Hunter : Agent
 
     private void Awake()
     {
-        Renderer bodyRenderer = GetComponentInChildren<Renderer>();
-        if (bodyRenderer != null)
-            _bodyMaterial = bodyRenderer.material;
+        _renderers = GetComponentsInChildren<Renderer>();
+        _colliders = GetComponentsInChildren<Collider>();
+        _spawnPosition = transform.position;
+        _baseMaxSpeed = _maxSpeed;
+        _baseMaxSteering = _maxSteering;
+        Health = _maxHealth;
+
+        _feedback = gameObject.AddComponent<StateFeedback>();
 
         if (_bulletPrefab == null)
             Debug.LogError("hunter: falta asignar prefab de bala, atacar instantaneo", this);
@@ -78,15 +107,12 @@ public class Hunter : Agent
         Patrol = new PatrolState(this);
         Attack = new AttackState(this);
         Gather = new GatherState(this);
-
-        CreateStateLabel();
+        Escape = new EscapeState(this);
+        Dead = new DeadState(this);
     }
 
     private void Start()
     {
-        if (Camera.main != null)
-            _cameraTransform = Camera.main.transform;
-
         StateMachine.ChangeState(Patrol);
     }
 
@@ -94,14 +120,6 @@ public class Hunter : Agent
     {
         Sense();
         StateMachine.Update();
-    }
-
-    private void LateUpdate()
-    {
-        _stateLabel.transform.position = transform.position + Vector3.up * 2f;
-
-        if (_cameraTransform != null)
-            _stateLabel.transform.rotation = _cameraTransform.rotation;
     }
 
     private void Sense()
@@ -121,7 +139,7 @@ public class Hunter : Agent
                 continue;
 
             float distance = FlatDistance(boid.transform.position);
-            if (distance > _perceptionRadius)
+            if (distance > _perceptionRadius || !HasLineOfSight(boid.transform.position))
                 continue;
 
             if (boid.IsActive)
@@ -140,6 +158,81 @@ public class Hunter : Agent
                 ClosestDeadBoid = boid;
             }
         }
+
+        SenseWolves();
+    }
+
+    private void SenseWolves()
+    {
+        ClosestWolf = null;
+        float radius = StateMachine.CurrentState == Escape ? _escapeRadius + _escapeExitMargin : _escapeRadius;
+        float closestWolfDistance = radius;
+
+        int count = Physics.OverlapSphereNonAlloc(transform.position, radius, _sensorBuffer, _wolfLayer, QueryTriggerInteraction.Collide);
+
+        for (int i = 0; i < count; i++)
+        {
+            if (!_sensorBuffer[i].TryGetComponent(out Wolf wolf) || !HasLineOfSight(wolf.transform.position))
+                continue;
+
+            float distance = FlatDistance(wolf.transform.position);
+            if (distance <= closestWolfDistance)
+            {
+                closestWolfDistance = distance;
+                ClosestWolf = wolf;
+            }
+        }
+    }
+
+    public void TakeDamage(float damage)
+    {
+        if (!IsAlive)
+            return;
+
+        Health = Mathf.Max(0f, Health - damage);
+        SetAction($"Recibe {damage} de dano");
+
+        if (!IsAlive)
+            StateMachine.ChangeState(Dead);
+    }
+
+    public void Respawn()
+    {
+        Health = _maxHealth;
+        transform.position = _spawnPosition;
+        Stop();
+        SetAction("Respawn");
+        StateMachine.ChangeState(Patrol);
+    }
+
+    public void SetEscapeBoost(bool active)
+    {
+        _maxSpeed = active ? _baseMaxSpeed * _escapeSpeedMultiplier : _baseMaxSpeed;
+        _maxSteering = active ? _baseMaxSteering * _escapeSteeringMultiplier : _baseMaxSteering;
+    }
+
+    public Vector3 EscapeSteering(Wolf wolf)
+    {
+        Vector3 away = Flat(transform.position - PredictPosition(wolf)).normalized;
+
+        foreach (float angle in EscapeAngles)
+        {
+            Vector3 direction = Quaternion.AngleAxis(angle, Vector3.up) * away;
+
+            if (!IsObstructed(direction, _escapeLookAhead))
+                return Seek(transform.position + direction * _escapeLookAhead);
+        }
+
+        return Seek(transform.position + away * _escapeLookAhead);
+    }
+
+    public void SetBodyActive(bool active)
+    {
+        foreach (Renderer bodyRenderer in _renderers)
+            bodyRenderer.enabled = active;
+
+        foreach (Collider bodyCollider in _colliders)
+            bodyCollider.enabled = active;
     }
 
     public bool CanAttack() => Time.time >= _nextAttackTime;
@@ -195,13 +288,7 @@ public class Hunter : Agent
     public void SetStateFeedback(string stateName, Color color)
     {
         CurrentStateName = stateName;
-        Debug.Log($"Hunter -> {stateName}");
-
-        if (_bodyMaterial != null)
-            _bodyMaterial.color = color;
-
-        _stateLabel.text = stateName;
-        _stateLabel.color = color;
+        _feedback.SetState(stateName, color);
     }
 
     public void SetAction(string action)
@@ -213,18 +300,6 @@ public class Hunter : Agent
         Debug.Log($"Hunter: {action}");
     }
 
-    private void CreateStateLabel()
-    {
-        GameObject labelObj = new GameObject("StateLabel");
-        _stateLabel = labelObj.AddComponent<TextMesh>();
-        _stateLabel.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        labelObj.GetComponent<MeshRenderer>().sharedMaterial = _stateLabel.font.material;
-        _stateLabel.fontSize = 48;
-        _stateLabel.characterSize = 0.1f;
-        _stateLabel.anchor = TextAnchor.MiddleCenter;
-        _stateLabel.alignment = TextAlignment.Center;
-    }
-
     private void OnGUI()
     {
         if (!_showDebugPanel || Event.current.type != EventType.Repaint)
@@ -233,7 +308,8 @@ public class Hunter : Agent
         string target = CurrentTarget != null ? CurrentTarget.name : "-";
         float tba = Mathf.Max(0f, _nextAttackTime - Time.time);
 
-        GUI.Box(new Rect(10, 10, 260, 130), "Hunter");
+        GUI.Box(new Rect(10, 10, 260, 150), "Hunter");
+        GUI.Label(new Rect(20, 135, 240, 20), $"Vida: {Health:0}/{_maxHealth:0}");
         GUI.Label(new Rect(20, 35, 240, 20), $"Estado: {CurrentStateName}");
         GUI.Label(new Rect(20, 55, 240, 20), $"Objetivo: {target}");
         GUI.Label(new Rect(20, 75, 240, 20), $"Boids detectados: {DetectedBoids}");
@@ -249,6 +325,8 @@ public class Hunter : Agent
         Gizmos.DrawWireSphere(transform.position, _rangeAttackRadius);
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(transform.position, _meleeAttackRadius);
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawWireSphere(transform.position, _escapeRadius);
 
         if (CurrentTarget != null)
         {

@@ -23,6 +23,12 @@ public class AttackState : HunterState
 
     public override void Update()
     {
+        if (_hunter.ClosestWolf != null)
+        {
+            TransitionTo(_hunter.Escape);
+            return;
+        }
+
         if (_target == null || !_target.IsActive)
         {
             TransitionTo(_hunter.Patrol);
@@ -34,6 +40,13 @@ public class AttackState : HunterState
         if (distance > _hunter.PerceptionRadius)
         {
             _hunter.SetAction($"{_target.name} escapo");
+            TransitionTo(_hunter.Patrol);
+            return;
+        }
+
+        if (!_hunter.HasLineOfSight(_target.transform.position))
+        {
+            _hunter.SetAction($"{_target.name} sin linea de vision");
             TransitionTo(_hunter.Patrol);
             return;
         }
